@@ -1,0 +1,46 @@
+name: Build Windows app
+
+# Run it by hand: Actions tab -> "Build Windows app" -> "Run workflow"
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the packager
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build GBABuilder.exe
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name GBABuilder
+          --add-data "builders;builders"
+          --hidden-import argparse --hidden-import base64 --hidden-import bz2
+          --hidden-import configparser --hidden-import glob
+          --hidden-import struct --hidden-import zlib
+          app.py
+
+      - name: Self-test the finished .exe (builds two real ROMs)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\GBABuilder.exe" `
+                 -ArgumentList "--selftest","tests\fixtures","selftest-result.txt" `
+                 -Wait -PassThru
+          if (Test-Path selftest-result.txt) { Get-Content selftest-result.txt }
+          else { Write-Host "No result file was written - the .exe did not start." }
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Save the result
+        uses: actions/upload-artifact@v4
+        with:
+          name: GBABuilder-Windows
+          path: dist/GBABuilder.exe
+          if-no-files-found: error
